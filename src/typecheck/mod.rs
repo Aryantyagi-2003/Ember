@@ -206,6 +206,22 @@ pub fn check_program(program: &Program) -> Vec<TypeError> {
     checker.errors
 }
 
+/// Type-check a single bare expression (not wrapped in a `fn`), used by
+/// the REPL for input that isn't a full program. `Type::Error` is pushed
+/// onto the return-type stack first — a permissive stand-in "no
+/// meaningful function return type here" — so a stray top-level `return`
+/// (unusual, but not rejected by the grammar) type-checks against
+/// anything rather than hitting `check_stmt`'s "outside any function
+/// body" invariant, which is real for `check_program`'s call sites (every
+/// block there is always inside some `fn_lit`) but isn't guaranteed for
+/// this entry point.
+pub fn check_expr_program(expr: &Expr) -> Vec<TypeError> {
+    let mut checker = Checker::new();
+    checker.return_type_stack.push(Type::Error);
+    checker.check_expr(expr, None);
+    checker.errors
+}
+
 struct Checker {
     env: TypeEnv,
     return_type_stack: Vec<Type>,

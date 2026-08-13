@@ -31,6 +31,25 @@ pub fn parse(tokens: Vec<Token>) -> Result<Program, ParseError> {
     Parser::new(tokens).parse_program()
 }
 
+/// Parse a single top-level expression (with nothing left over after it),
+/// used by the REPL to evaluate a bare expression/block without
+/// requiring it to be wrapped in a `fn main() { ... }` — the REPL wraps
+/// its accumulated input in `{ ... }` before calling this, so this is
+/// almost always parsing one `Block`, reusing the exact same
+/// `parse_block`/statement-hoisting machinery a normal program's function
+/// bodies already go through.
+pub fn parse_expr_program(tokens: Vec<Token>) -> Result<Expr, ParseError> {
+    let mut parser = Parser::new(tokens);
+    let expr = parser.parse_expr()?;
+    if !parser.is_at_end() {
+        return Err(parser.error_here(format!(
+            "unexpected trailing input after expression, found {}",
+            parser.describe_current()
+        )));
+    }
+    Ok(expr)
+}
+
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,

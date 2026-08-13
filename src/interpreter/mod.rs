@@ -797,3 +797,22 @@ pub fn run_program(program: Program) -> (String, Result<(), RuntimeError>) {
     // correct behavior per the project's own panic-vs-error policy.
     handle.join().expect("interpreter thread panicked")
 }
+
+/// Evaluates a single bare expression (not a whole `Program` — no `fn
+/// main` hoisting/lookup), used by the REPL for input that isn't a full
+/// program. A stray top-level `return` (unusual, but not rejected by the
+/// grammar, and permitted by `typecheck::check_expr_program`) is treated
+/// as just producing its value rather than an error — the most useful
+/// behavior for an interactive prompt, where there's no enclosing
+/// function for it to meaningfully "return from."
+pub fn eval_expr_program(expr: &Expr) -> (String, Result<Value, RuntimeError>) {
+    let root = Scope::root();
+    register_builtins(&root);
+    let interp = Interpreter::new();
+    let result = match interp.eval_expr(expr, &root) {
+        Ok(v) => Ok(v),
+        Err(Signal::Return(v)) => Ok(v),
+        Err(Signal::Error(e)) => Err(e),
+    };
+    (interp.output(), result)
+}
