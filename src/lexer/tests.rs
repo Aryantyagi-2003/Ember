@@ -98,7 +98,10 @@ fn identifiers() {
 
 #[test]
 fn every_keyword() {
-    let src = "let mut fn if else while true false return panic int float bool string";
+    // `panic` is deliberately not in this list — it's an ordinary stdlib
+    // function identifier (like `print`/`println`), not a keyword; see
+    // LANGUAGE_SPEC.md §2's note on this.
+    let src = "let mut fn if else while true false return int float bool string";
     assert_eq!(
         kinds(src),
         vec![
@@ -111,7 +114,6 @@ fn every_keyword() {
             TokenKind::Bool(true),
             TokenKind::Bool(false),
             TokenKind::Return,
-            TokenKind::Panic,
             TokenKind::KwInt,
             TokenKind::KwFloat,
             TokenKind::KwBool,

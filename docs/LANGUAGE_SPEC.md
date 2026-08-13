@@ -31,7 +31,19 @@ thing to change after the fact.
   with no location is treated as a bug in Ember's own implementation.
 - Keywords (reserved, cannot be used as identifiers):
   `let`, `mut`, `fn`, `if`, `else`, `while`, `true`, `false`, `return`,
-  `panic`, `int`, `float`, `bool`, `string`.
+  `int`, `float`, `bool`, `string`.
+- **`panic` is deliberately not a keyword (fixed during type-checker
+  implementation).** An earlier draft of this list reserved `panic` as a
+  keyword, but §8/§9 document `panic(msg: string) -> never` as an
+  ordinary stdlib function called with normal call syntax
+  (`panic("boom")`) — and a reserved keyword can never appear in the
+  `IDENT` position a call's callee requires, so `panic(...)` could never
+  actually be parsed as written. This surfaced as an actual parse failure
+  while writing type-checker tests, not just a documentation nit. Fixed
+  by treating `panic` exactly like `print`/`println`/`concat` and every
+  other stdlib function: an ordinary identifier, pre-bound to a builtin
+  function type by the type checker's global scope, not lexer/parser
+  syntax.
 
 ## 3. Types
 
@@ -108,7 +120,40 @@ list (`fn f(mut x: int) -> int`).
 Arrays: the *binding* to an array follows the same `let`/`let mut` rule as
 any other value, but array *elements* are mutable through `push`/index
 assignment only when the binding itself is `mut` (i.e. `let mut xs = [1,2]`
-allows `xs.push(3)`; `let xs = [1,2]` does not).
+allows `xs.push(3)`; `let xs = [1,2]` does not). Concretely, the type
+checker resolves this by walking through any `Index` chain down to the
+expression's root identifier and checking *that* binding's `mutable`
+flag — `xs.push(v)` and `xs[i] = v` both require `xs` itself to trace back
+to a `mut` binding; a receiver that isn't rooted in a named `mut` binding
+at all (e.g. calling `.push()` directly on a fresh array literal) is
+rejected, since mutability here is a property of *bindings* (§5's own
+framing), not of arbitrary expressions.
+
+**Ownership boundary, parser vs. type checker (settled during type-checker
+design):** for `target = value`, the **parser** structurally restricts
+`target` to an `Ident` or `Index` AST node (rejecting e.g. `5 = x;` at
+parse time — see §11's `assign_expr`), but has no way to know whether the
+underlying binding is `mut`, since that requires symbol-table information
+the parser doesn't carry. The **type checker** is where mutability is
+actually enforced: it performs the root-binding walk described above and
+rejects assignment to a non-`mut` binding as a type error. This division
+is deliberate and exercised by dedicated tests on both sides — the parser
+rejects non-place syntax, the checker rejects place-but-non-mut targets —
+rather than either being silently skipped or redundantly re-implemented
+in both stages.
+
+**`to_string`: the one deliberate exception to "no overloading" (settled
+during type-checker design — see also §9).** `to_string` accepts a single
+argument of type `int`, `float`, or `bool` and returns `string`. This is
+*not* general function overloading — Ember has no mechanism for a
+user-defined function to declare multiple signatures under one name, and
+`to_string` is the only name in the language with this behavior. It is
+implemented as a single compiler-recognized intrinsic in the type checker
+(a hardcoded special case when checking a call whose callee is literally
+the identifier `to_string`), not as three ordinary `Function`-typed
+bindings coexisting under one name — the checker's environment model
+(§9) only ever holds one `Type::Function` per name, by design, and this
+is the sole, narrow, explicitly-carved-out exception to that rule.
 
 ## 6. Closures — semantics (the hard correctness bar)
 
@@ -185,6 +230,18 @@ pass that creates and binds all of that block's `fn_decl` closures (over
 the block's own new environment frame) before evaluating any statement in
 program order, then proceed with normal sequential execution for
 everything else.
+
+**Extended to the top level (settled during type-checker implementation):**
+the type checker applies this same two-pass hoisting to `program`'s
+top-level `item` list too — every top-level function's signature is
+registered before any top-level function's body is checked, so top-level
+functions can call each other regardless of declaration order (e.g. a
+`main` declared *before* a helper it calls). §6.1 as originally written
+only discussed hoisting "within a given block"; treating the top-level
+program as the outermost such scope is the natural, consistent
+generalization — anything else would make top-level declaration order
+matter in a way no nested block's order does, which would be surprising
+and inconsistent with every other block in the language.
 
 ## 7. Control flow
 
@@ -298,6 +355,18 @@ supported (no overloading in v1) — `println` takes `string` only; callers
 use `to_string` to convert. This keeps the type checker's function-call
 rule uniform (one signature per name) rather than needing overload
 resolution.
+
+**`to_string`'s row above is intentionally the one exception to that
+uniform rule.** Read literally, listing three signatures under one name
+in the table above contradicts "one signature per name" in the previous
+paragraph — that inconsistency was caught while designing the type
+checker's environment model (which really can only bind one
+`Type::Function` per name) and is resolved, not left standing: `to_string`
+is a single narrow, compiler-recognized intrinsic dispatching on its
+argument's type among exactly `int` | `float` | `bool` → `string`, not a
+general overloading mechanism available to user-defined Ember functions.
+No other stdlib function, and no user-definable function, gets this
+treatment. See §5 for the same note from the mutability/ownership side.
 
 ## 10. Explicitly out of scope for v1 (stretch goals, in priority order)
 
