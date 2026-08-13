@@ -13,6 +13,10 @@ pub struct Span {
 /// Surface type annotations as written by the programmer (§3, §11 `type`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeAnn {
+    /// `()` — the "no value" type, written literally as empty parens.
+    /// Used throughout the spec/examples as a function's return type
+    /// when it's called only for side effects (e.g. `fn main() -> ()`).
+    Unit,
     Int,
     Float,
     Bool,
@@ -85,11 +89,15 @@ pub enum ExprKind {
         rhs: Box<Expr>,
     },
 
-    /// `target = value` — target is restricted by the parser to an
-    /// assignable place (Ident or Index); checked structurally rather
-    /// than via a separate "place expression" AST node to keep the AST
-    /// small. The type checker rejects non-place targets and non-`mut`
-    /// targets with a location-carrying error.
+    /// `target = value` — target is restricted to an assignable place
+    /// (Ident or Index), checked structurally rather than via a separate
+    /// "place expression" AST node to keep the AST small. The **parser**
+    /// rejects a non-place target (e.g. `5 = x;`) at parse time, since
+    /// that's purely a syntactic-shape check; the **type checker**
+    /// separately rejects assignment to a non-`mut` binding, since that
+    /// requires symbol-table/mutability information the parser doesn't
+    /// have. Both produce a location-carrying error, just at different
+    /// stages.
     Assign {
         target: Box<Expr>,
         value: Box<Expr>,
@@ -141,6 +149,13 @@ pub enum StmtKind {
         body: Expr,
     }, // body is always ExprKind::Block
     Return(Option<Expr>),
+    /// A named function declared inside a block (§6.1, §11 `fn_decl_stmt`)
+    /// — same production as the top-level `Item::FnDecl`, reachable here
+    /// too so sibling functions in a block can be mutually recursive.
+    FnDecl {
+        name: String,
+        fn_lit: FnLit,
+    },
     Expr(Expr), // expression-statement; `;`-terminated per grammar
 }
 

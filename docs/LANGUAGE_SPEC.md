@@ -149,6 +149,18 @@ recursive closure test, and a nested-closure shadowing test — see
 
 ### 6.1 Sibling function hoisting (mutual recursion)
 
+**Grammar note (fixed during parser implementation):** this section, as
+originally written, presupposed that a named `fn_decl` can appear inside
+an arbitrary block — the mutual-recursion example in `EXAMPLES_DRAFT.md`
+declares `is_even`/`is_odd` inside `main`'s body — but the §11 grammar as
+first drafted only allowed `fn_decl` at the top-level `program := item*`,
+with no corresponding `stmt` alternative. That was a real gap between
+this section and the grammar, not a stylistic choice; §11 has been
+updated to add `fn_decl_stmt` as a `stmt` alternative (see below), and
+`StmtKind` in `src/ast/mod.rs` gained a matching `FnDecl` variant so a
+block's statement list can actually represent one. With that fix, the
+rest of this section holds as originally written:
+
 A named `fn_decl` desugars to `let NAME = fn_lit` (§11), and ordinary
 `let` bindings are only visible to code *after* them in the same block —
 this is standard lexical order and is unaffected by this section. Named
@@ -179,11 +191,25 @@ everything else.
 - `if`/`else` is an **expression**: `if cond { e1 } else { e2 }` has a
   value and a type, and both branches must have the same type. An `if`
   used as a statement (no value consumed) with no `else` is permitted and
-  has type `()` in that position only — `else` is *required* when the
-  `if`'s value is used as an expression (enforced by the type checker,
-  not the grammar, to keep the grammar uniform: every `if` parses as an
-  expression; a missing-`else`-in-value-position is a type error, not a
-  parse error).
+  has type `()` in that position only. As of the §11 grammar update, `else`
+  is *required* structurally by the grammar wherever `if` is reachable as
+  a value (`primary`/`if_expr`) — a bare `if` with no `else` is a distinct
+  production (`bare_if_stmt`, statement-position only) rather than an
+  `if_expr` with an omitted branch, so a missing `else` in value position
+  is a **parse error**, not a type error (superseding an earlier draft of
+  this section, which deferred the check to the type checker).
+  Because the grammar's `if_expr` production is itself recursive
+  (`"else" (block | if_expr)`), this requirement is strict at every level
+  of an `else if` chain: once a chain contains one `else`, every branch
+  down that chain must terminate in an `else` too, whether or not the
+  chain's value is ultimately used. `if a { .. } else if b { .. }` with no
+  final `else` is a `ParseError` even in throwaway/statement position —
+  not just when its value is consumed. This is a deliberate, stricter-
+  than-strictly-necessary design opinion: an incomplete `else if` cascade
+  is treated as very likely a real bug in the programmer's Ember code,
+  not a construct worth accommodating. Confirmed as the intended behavior
+  after being flagged during parser implementation; open to revisiting if
+  it proves awkward against real example programs.
 - `while cond { body }` is a statement-position looping construct; it
   always has type `()`. It is not an expression (unlike `if`) because a
   loop has no well-defined single value in the general case without a
@@ -296,6 +322,7 @@ params         := param ("," param)* ;
 param          := "mut"? IDENT ":" type ;
 
 type           := "int" | "float" | "bool" | "string"
+                 | "(" ")"                                      // unit type — see note below
                  | "[" type "]"
                  | "fn" "(" (type ("," type)*)? ")" "->" type ;
 
@@ -305,12 +332,14 @@ stmt           := let_stmt
                  | while_stmt
                  | bare_if_stmt
                  | return_stmt
+                 | fn_decl_stmt
                  | expr_stmt ;
 
 let_stmt       := "let" "mut"? IDENT (":" type)? "=" expr ";" ;
 while_stmt     := "while" expr block ";"? ;
 bare_if_stmt   := "if" expr block ";"? ;        // no `else` — statement position only, always `()`
 return_stmt    := "return" expr? ";" ;
+fn_decl_stmt   := fn_decl ;                     // same production as the item form, §6.1; no trailing `;` needed — block-terminated like while/bare-if
 expr_stmt      := expr ";" ;
 
 expr           := assign_expr ;
@@ -342,6 +371,18 @@ fn_lit         := "fn" "(" params? ")" "->" type block ;   // anonymous closure 
 ```
 
 Notes:
+- **`()` (unit type), fixed during parser implementation.** Every example
+  and §9's stdlib table writes `-> ()` for a function with no meaningful
+  return value, but the original `type` production never actually
+  admitted `()` as a type — a genuine grammar gap (caught the same way as
+  the `fn_decl`-in-block gap above: the parser wouldn't parse `fn main()
+  -> () { .. }` at all). Fixed by adding `"(" ")"` as a `type` alternative
+  and a corresponding `TypeAnn::Unit` AST variant. `()` is only a type
+  annotation here — it is not (yet) a general unit *value* literal
+  distinct from "a block with no tail expression"; blocks/`while`/bare-
+  `if` already evaluate to "no value" without needing a spelled-out `()`
+  literal in expression position (§7), which is why this gap went
+  unnoticed until the parser tried to parse real example programs.
 - `if` without `else` is only legal as `bare_if_stmt`, a dedicated
   statement production (not reachable through `primary`/`if_expr`, which
   always requires `else`) — enforced structurally by the grammar itself
@@ -369,3 +410,7 @@ Notes:
   gives named top-level functions the same first-class-value treatment
   closures get (this is what makes recursion via self-reference and
   mutual recursion work uniformly).
+- `fn_decl` is reachable both as a top-level `item` and, via
+  `fn_decl_stmt`, inside any `block` (§6.1) — the same underlying
+  production (`"fn" IDENT "(" params? ")" "->" type block`) in both
+  positions, which is why one shared parser routine builds both.

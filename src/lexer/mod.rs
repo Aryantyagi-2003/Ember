@@ -67,6 +67,58 @@ pub enum TokenKind {
     Eof,
 }
 
+impl std::fmt::Display for TokenKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use TokenKind::*;
+        match self {
+            Int(n) => write!(f, "integer '{}'", n),
+            Float(x) => write!(f, "float '{}'", x),
+            Str(s) => write!(f, "string {:?}", s),
+            Bool(b) => write!(f, "'{}'", b),
+            Ident(s) => write!(f, "identifier '{}'", s),
+            Let => write!(f, "'let'"),
+            Mut => write!(f, "'mut'"),
+            Fn => write!(f, "'fn'"),
+            If => write!(f, "'if'"),
+            Else => write!(f, "'else'"),
+            While => write!(f, "'while'"),
+            Return => write!(f, "'return'"),
+            Panic => write!(f, "'panic'"),
+            KwInt => write!(f, "'int'"),
+            KwFloat => write!(f, "'float'"),
+            KwBool => write!(f, "'bool'"),
+            KwString => write!(f, "'string'"),
+            Plus => write!(f, "'+'"),
+            Minus => write!(f, "'-'"),
+            Star => write!(f, "'*'"),
+            Slash => write!(f, "'/'"),
+            Percent => write!(f, "'%'"),
+            EqEq => write!(f, "'=='"),
+            NotEq => write!(f, "'!='"),
+            Lt => write!(f, "'<'"),
+            LtEq => write!(f, "'<='"),
+            Gt => write!(f, "'>'"),
+            GtEq => write!(f, "'>='"),
+            AndAnd => write!(f, "'&&'"),
+            OrOr => write!(f, "'||'"),
+            Not => write!(f, "'!'"),
+            Eq => write!(f, "'='"),
+            Arrow => write!(f, "'->'"),
+            LParen => write!(f, "'('"),
+            RParen => write!(f, "')'"),
+            LBrace => write!(f, "'{{'"),
+            RBrace => write!(f, "'}}'"),
+            LBracket => write!(f, "'['"),
+            RBracket => write!(f, "']'"),
+            Comma => write!(f, "','"),
+            Colon => write!(f, "':'"),
+            Semicolon => write!(f, "';'"),
+            Dot => write!(f, "'.'"),
+            Eof => write!(f, "end of input"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
