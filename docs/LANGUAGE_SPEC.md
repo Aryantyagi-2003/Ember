@@ -303,6 +303,22 @@ and inconsistent with every other block in the language.
 - Blocks `{ ... }` are expressions: the value of a block is the value of
   its last expression if it is not terminated by `;`; a block ending in
   `;` (or empty) has type `()`. Standard ML/Rust block-value convention.
+- **A function body ending in an explicit `return`, not a tail
+  expression (fixed during interpreter implementation).** A function
+  whose body's last top-level statement is `return expr;` — the common
+  "guard clauses, then a final `return`" idiom — has no tail expression,
+  so its block's own structural type is `()` by the rule above. Checked
+  naively against a non-`()` declared return type, this reads as a type
+  error even though every runtime execution path is well-typed (the
+  `return`'s own value is already checked against the declared return
+  type independently). The type checker special-cases exactly this one
+  shape — body has no tail *and* its last statement is `return` — to
+  avoid that false error. This is a narrow, purely syntactic check on the
+  immediate body block's last statement, **not** general control-flow
+  reachability analysis (still explicitly out of scope, §7/§8): a
+  `return` reachable only through a nested `if`/`else` (with no tail
+  expression after it either) is not covered and still needs an explicit
+  trailing expression.
 
 ## 8. Error handling
 

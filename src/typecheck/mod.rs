@@ -281,7 +281,29 @@ impl Checker {
 
         let body_ty = match &fn_lit.body.kind {
             ExprKind::Block(stmts, tail) => {
-                self.check_block_contents(stmts, tail.as_deref(), Some(&ret_ty))
+                let t = self.check_block_contents(stmts, tail.as_deref(), Some(&ret_ty));
+                // Narrow relaxation, not general control-flow
+                // reachability analysis (still explicitly out of scope):
+                // if the body has no tail expression (structural type
+                // `()`) but its last top-level statement is an explicit
+                // `return`, the block never actually "falls through" to
+                // produce that `()` value — the `return`'s own value
+                // already had its type checked against `ret_ty` above by
+                // check_stmt. Without this, the common "guard clauses,
+                // then a final `return`" idiom would be a false type
+                // error despite every runtime path being well-typed.
+                // Only the immediate body block's *last* statement is
+                // considered — a `return` nested deeper in control flow
+                // (e.g. as the only path through an if/else) is not
+                // covered by this check and still needs an explicit
+                // tail expression.
+                if tail.is_none()
+                    && matches!(stmts.last().map(|s| &s.kind), Some(StmtKind::Return(_)))
+                {
+                    ret_ty.clone()
+                } else {
+                    t
+                }
             }
             // Parser invariant: a fn_lit's body is always parsed via
             // parse_block, so it is always ExprKind::Block.
